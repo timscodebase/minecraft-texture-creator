@@ -14,6 +14,7 @@ import ExportModal from '../components/ExportModal';
 import PaywallModal from '../components/PaywallModal';
 
 // Firebase config from global (window) or fallback
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const appId =
   typeof window !== 'undefined' && (window as any).__app_id
     ? (window as any).__app_id
