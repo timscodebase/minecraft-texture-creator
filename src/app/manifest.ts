@@ -57,6 +57,12 @@ export default function manifest(): MetadataRoute.Manifest {
         "form_factor": "narrow", // Or omit form_factor for mobile defaults
         "label": "Your App's Mobile Profile View"
       }
-    ]
+    ],
+    "protocol_handlers": [
+      {
+        "protocol": "web+mtc", // Your custom protocol prefix
+        "url": "/handle-protocol?url=%s" // A URL within your app's scope to handle it
+      },
+    ],
   }
 }
