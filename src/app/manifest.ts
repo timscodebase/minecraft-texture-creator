@@ -50,7 +50,7 @@ export default function manifest(): MetadataRoute.Manifest {
         "label": "Your App's Desktop Home Screen"
       },
       {
-        "src": "/screenshots/mobile-profile.png", // Replace with your actual screenshot path
+        "src": "/screenshot-2.png", // Replace with your actual screenshot path
         "sizes": "720x1280",
         "type": "image/png",
         "form_factor": "narrow", // Or omit form_factor for mobile defaults
