@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     siteName: "Minecraft Texture Creator",
     images: [
       {
-        url: "https://minecraft-texture-creator.vercel.app/screenshot.png",
+        url: "https://minecraft-texture-creator.vercel.app/screenshot-1.png",
         width: 1200,
         height: 630,
         alt: "Minecraft Texture Creator",
