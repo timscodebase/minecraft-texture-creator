@@ -9,6 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#170a01',
     theme_color: '#025406',
+    display_override: ['window-controls-overlay'],
     icons: [
       // Your primary icons for the PWA manifest
       {
