@@ -15,13 +15,13 @@ export default function manifest(): MetadataRoute.Manifest {
         src: '/favicon/web-app-manifest-192x192.png',
         sizes: '192x192',
         type: 'image/png',
-        purpose: 'any maskable' // Include "any" here for broader compatibility
+        purpose: 'maskable' // Use "maskable" for maskable icons
       },
       {
         src: '/favicon/web-app-manifest-512x512.png',
         sizes: '512x512',
         type: 'image/png',
-        purpose: 'any maskable' // Include "any" here for broader compatibility
+        purpose: 'maskable' // Use "maskable" for maskable icons
       },
       // You can also include other specific icon sizes that match your <link> tags
       // For instance, if you have a 96x96 PNG specific to the manifest
