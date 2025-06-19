@@ -148,7 +148,7 @@ export default function HomePage() {
   // Hydration-safe loading
   if (!isAuthReady) {
     return (
-      <div className='flex items-center justify-center min-h-screen bg-gray-900 text-white'>
+      <div className='flex items-center justify-center min-h-screen bg-[#170a01] text-white'>
         <p>Loading application...</p>
       </div>
     );
@@ -157,8 +157,8 @@ export default function HomePage() {
   // If not signed in, show sign in button
   if (!user) {
     return (
-      <div className='flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white'>
-        <h1 className='text-4xl font-bold mb-6 text-green-400'>
+      <div className='flex flex-col items-center justify-center min-h-screen bg-[#170a01] text-white'>
+        <h1 className='text-4xl font-bold mb-6 text-lime-500'>
           Minecraft Texture Creator
         </h1>
         <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
@@ -168,8 +168,8 @@ export default function HomePage() {
 
   // Main app UI
   return (
-    <div className='min-h-screen bg-gray-900 text-gray-100 font-inter p-4 flex flex-col items-center justify-center'>
-      <h1 className='text-4xl font-bold mb-6 text-green-400'>
+    <div className='min-h-screen bg-[#170a01] text-gray-100 font-inter p-4 flex flex-col items-center justify-center'>
+      <h1 className='text-4xl font-bold mb-6 text-lime-500'>
         Minecraft Texture Creator
       </h1>
       <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
