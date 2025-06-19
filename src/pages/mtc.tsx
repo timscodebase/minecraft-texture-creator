@@ -7,7 +7,7 @@ export default function HandleProtocol() {
   const searchParams = useSearchParams();
   
   useEffect(() => {
-    const url = searchParams.get('url');
+    const url = searchParams?.get('url');
     if (url) {
       // Handle the protocol URL: web+mtc://texture-data
       console.log('Protocol URL:', url);
