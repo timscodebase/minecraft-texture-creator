@@ -1,6 +1,12 @@
 import React from 'react';
 
-export default function AuthSection({ user, onSignIn, onSignOut }) {
+type AuthSectionProps = {
+  user: null | { uid: string; displayName?: string | null };
+  onSignIn: () => void;
+  onSignOut: () => void;
+};
+
+export default function AuthSection({ user, onSignIn, onSignOut }: AuthSectionProps) {
   if (!user) {
     return (
       <button
