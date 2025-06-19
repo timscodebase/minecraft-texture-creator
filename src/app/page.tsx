@@ -2,9 +2,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../utils/firebase';
+import { onAuthChange, signInWithGoogle, signOutUser, db } from '../utils/firebase';
 import { generate256ColorPalette } from '../utils/palette';
 import { DEFAULT_GRID_COLOR } from '../utils/constants';
 
@@ -13,27 +12,17 @@ import TextureGrid from '../components/TextureGrid';
 import ExportModal from '../components/ExportModal';
 import PaywallModal from '../components/PaywallModal';
 
-// Firebase config from global (window) or fallback
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const appId =
-  typeof window !== 'undefined' && (window as any).__app_id
-    ? (window as any).__app_id
-    : 'default-app-id';
-const initialAuthToken =
-  typeof window !== 'undefined' && (window as any).__initial_auth_token
-    ? (window as any).__initial_auth_token
-    : null;
-
 export default function HomePage() {
-  // State
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Auth state
+  const [user, setUser] = useState<null | { uid: string; displayName?: string | null }>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+
+  // App state
+  const [appId, setAppId] = useState('default-app-id');
   const [gridSize, setGridSize] = useState(16);
   const [usageCount, setUsageCount] = useState(0);
   const [gridColors, setGridColors] = useState<string[][]>(
-    Array(16)
-      .fill(null)
-      .map(() => Array(16).fill(DEFAULT_GRID_COLOR))
+    Array(16).fill(null).map(() => Array(16).fill(DEFAULT_GRID_COLOR))
   );
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [palette] = useState<string[]>(generate256ColorPalette());
@@ -44,38 +33,50 @@ export default function HomePage() {
   const [paywallMessage, setPaywallMessage] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Auth Effect
+  // Set appId from window (client only)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        try {
-          if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
-          } else {
-            await signInAnonymously(auth);
-          }
-        } catch (error) {
-          console.error('Error signing in:', error);
-        }
+    if (typeof window !== 'undefined' && (window as any).__app_id) {
+      setAppId((window as any).__app_id);
+    }
+  }, []);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthChange((firebaseUser) => {
+      if (firebaseUser) {
+        setUser({ uid: firebaseUser.uid, displayName: firebaseUser.displayName });
+      } else {
+        setUser(null);
       }
-      setCurrentUserId(auth.currentUser?.uid || crypto.randomUUID());
       setIsAuthReady(true);
     });
-
     return () => unsubscribe();
-    // eslint-disable-next-line
   }, []);
+
+  // Sign in handler (for sign in button)
+  const handleSignIn = async () => {
+    setIsAuthReady(false);
+    await signInWithGoogle();
+    // onAuthChange will update user and isAuthReady
+  };
+
+  // Sign out handler
+  const handleSignOut = async () => {
+    setIsAuthReady(false);
+    await signOutUser();
+    // onAuthChange will update user and isAuthReady
+  };
 
   // Save grid/colors/usage to Firestore
   const saveGridColors = useCallback(
     async (currentGrid: string[][], currentSize: number, currentCount: number) => {
-      if (!currentUserId) {
-        console.warn('User ID not available, cannot save texture.');
+      if (!user) {
+        console.warn('User not available, cannot save texture.');
         return;
       }
       const userTextureDocRef = doc(
         db,
-        `artifacts/${appId}/users/${currentUserId}/textures`,
+        `artifacts/${appId}/users/${user.uid}/textures`,
         'currentTexture'
       );
       try {
@@ -92,16 +93,16 @@ export default function HomePage() {
         console.error('Error saving texture:', e);
       }
     },
-    [currentUserId]
+    [user, appId]
   );
 
-  // Firestore Data Listener
+  // Firestore Data Listener (client only)
   useEffect(() => {
-    if (!isAuthReady || !currentUserId) return;
+    if (!isAuthReady || !user) return;
 
     const userTextureDocRef = doc(
       db,
-      `artifacts/${appId}/users/${currentUserId}/textures`,
+      `artifacts/${appId}/users/${user.uid}/textures`,
       'currentTexture'
     );
 
@@ -156,7 +157,7 @@ export default function HomePage() {
     );
 
     return () => unsubscribe();
-  }, [isAuthReady, currentUserId]);
+  }, [isAuthReady, user, appId]);
 
   // Color a single cell
   const colorCell = useCallback(
@@ -341,6 +342,7 @@ export default function HomePage() {
     }
   }, [gridColors, gridSize, usageCount, saveGridColors]);
 
+  // Hydration-safe loading
   if (!isAuthReady) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
@@ -349,15 +351,37 @@ export default function HomePage() {
     );
   }
 
+  // If not signed in, show sign in button
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+        <h1 className="text-4xl font-bold mb-6 text-green-400">Minecraft Texture Creator</h1>
+        <button
+          onClick={handleSignIn}
+          className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-all duration-200"
+        >
+          Sign In with Google
+        </button>
+      </div>
+    );
+  }
+
+  // Main app UI
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-inter p-4 flex flex-col items-center justify-center">
       <h1 className="text-4xl font-bold mb-6 text-green-400">Minecraft Texture Creator</h1>
-      {currentUserId && (
-        <p className="text-sm mb-4 text-gray-400">
-          User ID:{' '}
-          <span className="font-mono bg-gray-800 p-1 rounded">{currentUserId}</span>
-        </p>
-      )}
+      <p className="text-sm mb-4 text-gray-400">
+        User:{' '}
+        <span className="font-mono bg-gray-800 p-1 rounded">
+          {user.displayName ? user.displayName : user.uid}
+        </span>
+      </p>
+      <button
+        onClick={handleSignOut}
+        className="px-4 py-2 bg-red-600 text-white rounded font-bold mb-4"
+      >
+        Sign Out
+      </button>
       <p className="text-md mb-4 text-gray-300">
         Total Exports: <span className="font-bold text-yellow-300">{usageCount}</span>
       </p>
