@@ -1,282 +1,68 @@
 // src/app/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
-import { onAuthChange, signInWithGoogle, signOutUser, db } from '../utils/firebase';
-import { generate256ColorPalette } from '../utils/palette';
-import { DEFAULT_GRID_COLOR } from '../utils/constants';
+import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useGrid } from '../hooks/useGrid';
+import { useFirestoreSync } from '../hooks/useFirestoreSync';
 
+import AuthSection from '../components/AuthSection';
 import ColorPalette from '../components/ColorPalette';
 import TextureGrid from '../components/TextureGrid';
 import ExportModal from '../components/ExportModal';
 import PaywallModal from '../components/PaywallModal';
 
 export default function HomePage() {
-  // Auth state
-  const [user, setUser] = useState<null | { uid: string; displayName?: string | null }>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  // Auth
+  const { user, isAuthReady, signIn, signOut } = useAuth();
 
-  // App state
+  // Grid
+  const {
+    gridSize,
+    setGridSize,
+    gridColors,
+    setGridColors,
+    selectedColor,
+    setSelectedColor,
+    isDrawing,
+    setIsDrawing,
+    palette,
+    canvasRef,
+    colorCell,
+    handleMouseDown,
+    handleMouseEnter,
+    handleMouseUp,
+    clearGrid,
+    fillGrid,
+  } = useGrid();
+
+  // App-specific state
   const [appId, setAppId] = useState('default-app-id');
-  const [gridSize, setGridSize] = useState(16);
   const [usageCount, setUsageCount] = useState(0);
-  const [gridColors, setGridColors] = useState<string[][]>(
-    Array(16).fill(null).map(() => Array(16).fill(DEFAULT_GRID_COLOR))
-  );
-  const [selectedColor, setSelectedColor] = useState('#000000');
-  const [palette] = useState<string[]>(generate256ColorPalette());
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
-  const [isDrawing, setIsDrawing] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallMessage, setPaywallMessage] = useState('');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Set appId from window (client only)
-  useEffect(() => {
+  React.useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).__app_id) {
       setAppId((window as any).__app_id);
     }
   }, []);
 
-  // Listen for auth state changes
-  useEffect(() => {
-    const unsubscribe = onAuthChange((firebaseUser) => {
-      if (firebaseUser) {
-        setUser({ uid: firebaseUser.uid, displayName: firebaseUser.displayName });
-      } else {
-        setUser(null);
-      }
-      setIsAuthReady(true);
-    });
-    return () => unsubscribe();
-  }, []);
+  // Firestore sync
+  useFirestoreSync({
+    user,
+    appId,
+    setGridColors,
+    setUsageCount,
+    setGridSize,
+    isAuthReady,
+  });
 
-  // Sign in handler (for sign in button)
-  const handleSignIn = async () => {
-    setIsAuthReady(false);
-    await signInWithGoogle();
-    // onAuthChange will update user and isAuthReady
-  };
-
-  // Sign out handler
-  const handleSignOut = async () => {
-    setIsAuthReady(false);
-    await signOutUser();
-    // onAuthChange will update user and isAuthReady
-  };
-
-  // Save grid/colors/usage to Firestore
-  const saveGridColors = useCallback(
-    async (currentGrid: string[][], currentSize: number, currentCount: number) => {
-      if (!user) {
-        console.warn('User not available, cannot save texture.');
-        return;
-      }
-      const userTextureDocRef = doc(
-        db,
-        `artifacts/${appId}/users/${user.uid}/textures`,
-        'currentTexture'
-      );
-      try {
-        await setDoc(
-          userTextureDocRef,
-          {
-            grid: JSON.stringify(currentGrid),
-            usageCount: currentCount,
-            gridSize: currentSize,
-          },
-          { merge: true }
-        );
-      } catch (e) {
-        console.error('Error saving texture:', e);
-      }
-    },
-    [user, appId]
-  );
-
-  // Firestore Data Listener (client only)
-  useEffect(() => {
-    if (!isAuthReady || !user) return;
-
-    const userTextureDocRef = doc(
-      db,
-      `artifacts/${appId}/users/${user.uid}/textures`,
-      'currentTexture'
-    );
-
-    const unsubscribe = onSnapshot(
-      userTextureDocRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          let loadedGrid = Array(16)
-            .fill(null)
-            .map(() => Array(16).fill(DEFAULT_GRID_COLOR));
-          let loadedUsageCount = 0;
-          let loadedGridSize = 16;
-
-          if (data) {
-            if (data.grid) {
-              try {
-                loadedGrid = JSON.parse(data.grid);
-              } catch (e) {
-                console.error('Error parsing grid data from Firestore:', e);
-              }
-            }
-            loadedUsageCount = data.usageCount || 0;
-            loadedGridSize = data.gridSize || 16;
-          }
-
-          // Ensure loaded grid dimensions match the loadedGridSize
-          if (
-            loadedGrid.length !== loadedGridSize ||
-            (loadedGrid.length > 0 && loadedGrid[0].length !== loadedGridSize)
-          ) {
-            loadedGrid = Array(loadedGridSize)
-              .fill(null)
-              .map(() => Array(loadedGridSize).fill(DEFAULT_GRID_COLOR));
-          }
-
-          setGridColors(loadedGrid);
-          setUsageCount(loadedUsageCount);
-          setGridSize(loadedGridSize);
-        } else {
-          const initialGrid = Array(16)
-            .fill(null)
-            .map(() => Array(16).fill(DEFAULT_GRID_COLOR));
-          setGridColors(initialGrid);
-          setUsageCount(0);
-          setGridSize(16);
-        }
-      },
-      (error) => {
-        console.error('Error listening to texture data:', error);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [isAuthReady, user, appId]);
-
-  // Color a single cell
-  const colorCell = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      setGridColors((prevGrid) => {
-        const newGrid = prevGrid.map((row, rIdx) =>
-          row.map((color, cIdx) =>
-            rIdx === rowIndex && cIdx === colIndex ? selectedColor : color
-          )
-        );
-        return newGrid;
-      });
-    },
-    [selectedColor]
-  );
-
-  // Mouse events for drawing
-  const handleMouseDown = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      setIsDrawing(true);
-      colorCell(rowIndex, colIndex);
-    },
-    [colorCell]
-  );
-
-  const handleMouseEnter = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      if (isDrawing) {
-        colorCell(rowIndex, colIndex);
-      }
-    },
-    [isDrawing, colorCell]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      saveGridColors(gridColors, gridSize, usageCount);
-    }
-  }, [isDrawing, gridColors, gridSize, usageCount, saveGridColors]);
-
-  // Grid size change
-  const handleGridSizeChange = useCallback(
-    (newSize: number) => {
-      let message = '';
-      let paywallTriggered = false;
-
-      if (newSize === 64 || newSize === 128) {
-        message = `Grid sizes ${newSize}x${newSize} require an upgrade. Please contact support.`;
-        paywallTriggered = true;
-      } else if (usageCount >= 15 && (newSize === 16 || newSize === 32)) {
-        message = `You have reached the limit of 15 exports for 16x16 and 32x32 grids. Please upgrade to continue.`;
-        paywallTriggered = true;
-      }
-
-      if (paywallTriggered) {
-        setPaywallMessage(message);
-        setShowPaywallModal(true);
-        return;
-      }
-
-      const newClearedGrid = Array(newSize)
-        .fill(null)
-        .map(() => Array(newSize).fill(DEFAULT_GRID_COLOR));
-      setGridSize(newSize);
-      setGridColors(newClearedGrid);
-      saveGridColors(newClearedGrid, newSize, usageCount);
-    },
-    [usageCount, saveGridColors]
-  );
-
-  // Clear grid
-  const handleClearGrid = useCallback(() => {
-    let message = '';
-    let paywallTriggered = false;
-
-    if (usageCount >= 15 && (gridSize === 16 || gridSize === 32)) {
-      message = `You have reached the limit of 15 exports for 16x16 and 32x32 grids. Please upgrade to continue.`;
-      paywallTriggered = true;
-    }
-
-    if (paywallTriggered) {
-      setPaywallMessage(message);
-      setShowPaywallModal(true);
-      return;
-    }
-
-    const clearedGrid = Array(gridSize)
-      .fill(null)
-      .map(() => Array(gridSize).fill(DEFAULT_GRID_COLOR));
-    setGridColors(clearedGrid);
-    saveGridColors(clearedGrid, gridSize, usageCount);
-  }, [gridSize, usageCount, saveGridColors]);
-
-  // Fill grid
-  const handleFillGrid = useCallback(() => {
-    let message = '';
-    let paywallTriggered = false;
-
-    if (usageCount >= 15 && (gridSize === 16 || gridSize === 32)) {
-      message = `You have reached the limit of 15 exports for 16x16 and 32x32 grids. Please upgrade to continue.`;
-      paywallTriggered = true;
-    }
-
-    if (paywallTriggered) {
-      setPaywallMessage(message);
-      setShowPaywallModal(true);
-      return;
-    }
-
-    const filledGrid = Array(gridSize)
-      .fill(null)
-      .map(() => Array(gridSize).fill(selectedColor));
-    setGridColors(filledGrid);
-    saveGridColors(filledGrid, gridSize, usageCount);
-  }, [gridSize, selectedColor, usageCount, saveGridColors]);
-
-  // Export texture
-  const handleExportTexture = useCallback(() => {
+  // Export handler (with Firestore atomic increment)
+  const handleExportTexture = React.useCallback(async () => {
     if (usageCount >= 15 && (gridSize === 16 || gridSize === 32)) {
       setPaywallMessage(
         `You have reached the limit of 15 exports for 16x16 and 32x32 grids. Please upgrade to continue.`
@@ -328,9 +114,18 @@ export default function HomePage() {
       link.click();
       document.body.removeChild(link);
 
-      const newUsageCount = usageCount + 1;
-      setUsageCount(newUsageCount);
-      saveGridColors(gridColors, gridSize, newUsageCount);
+      // Use Firestore atomic increment for usageCount
+      const { db } = await import('../utils/firebase');
+      const { doc, updateDoc, increment } = await import('firebase/firestore');
+      const userId = user?.uid;
+      if (userId) {
+        const userTextureDocRef = doc(
+          db,
+          `artifacts/${appId}/users/${userId}/textures`,
+          'currentTexture'
+        );
+        await updateDoc(userTextureDocRef, { usageCount: increment(1) });
+      }
 
       setExportMessage(
         `Texture exported successfully as minecraft_texture_${gridSize}x${gridSize}.png!`
@@ -340,7 +135,7 @@ export default function HomePage() {
       setExportMessage(`Error exporting texture: ${(e as Error).message}`);
       setShowExportModal(true);
     }
-  }, [gridColors, gridSize, usageCount, saveGridColors]);
+  }, [gridColors, gridSize, usageCount, appId, user, canvasRef]);
 
   // Hydration-safe loading
   if (!isAuthReady) {
@@ -356,12 +151,7 @@ export default function HomePage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
         <h1 className="text-4xl font-bold mb-6 text-green-400">Minecraft Texture Creator</h1>
-        <button
-          onClick={handleSignIn}
-          className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-all duration-200"
-        >
-          Sign In with Google
-        </button>
+        <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
       </div>
     );
   }
@@ -370,18 +160,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-inter p-4 flex flex-col items-center justify-center">
       <h1 className="text-4xl font-bold mb-6 text-green-400">Minecraft Texture Creator</h1>
-      <p className="text-sm mb-4 text-gray-400">
-        User:{' '}
-        <span className="font-mono bg-gray-800 p-1 rounded">
-          {user.displayName ? user.displayName : user.uid}
-        </span>
-      </p>
-      <button
-        onClick={handleSignOut}
-        className="px-4 py-2 bg-red-600 text-white rounded font-bold mb-4"
-      >
-        Sign Out
-      </button>
+      <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
       <p className="text-md mb-4 text-gray-300">
         Total Exports: <span className="font-bold text-yellow-300">{usageCount}</span>
       </p>
@@ -390,17 +169,17 @@ export default function HomePage() {
           palette={palette}
           selectedColor={selectedColor}
           setSelectedColor={setSelectedColor}
-          handleFillGrid={handleFillGrid}
+          handleFillGrid={fillGrid}
         />
         <TextureGrid
           gridColors={gridColors}
           gridSize={gridSize}
           usageCount={usageCount}
-          handleGridSizeChange={handleGridSizeChange}
+          handleGridSizeChange={setGridSize}
           handleMouseDown={handleMouseDown}
           handleMouseEnter={handleMouseEnter}
           handleMouseUp={handleMouseUp}
-          handleClearGrid={handleClearGrid}
+          handleClearGrid={clearGrid}
           handleExportTexture={handleExportTexture}
         />
       </div>
