@@ -43,8 +43,11 @@ export default function HomePage() {
 
   // Set appId from window (client only)
   React.useEffect(() => {
-    if (typeof window !== "undefined" && (window as { __app_id?: string }).__app_id) {
-      setAppId((window as { __app_id: string }).__app_id);
+    if (typeof window !== "undefined") {
+      const windowWithAppId = window as { __app_id?: string };
+      if (windowWithAppId.__app_id) {
+        setAppId(windowWithAppId.__app_id);
+      }
     }
   }, []);
 
