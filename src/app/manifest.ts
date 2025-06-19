@@ -58,11 +58,5 @@ export default function manifest(): MetadataRoute.Manifest {
         label: "Your App's Mobile Profile View",
       },
     ],
-    protocol_handlers: [
-      {
-        "protocol": "web+mtc",
-        "url": "/mtc?type=%s"
-      },
-    ],
   };
 }
