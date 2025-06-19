@@ -24,11 +24,8 @@ export default function HomePage() {
     setGridColors,
     selectedColor,
     setSelectedColor,
-    isDrawing,
-    setIsDrawing,
     palette,
     canvasRef,
-    colorCell,
     handleMouseDown,
     handleMouseEnter,
     handleMouseUp,
@@ -46,8 +43,8 @@ export default function HomePage() {
 
   // Set appId from window (client only)
   React.useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).__app_id) {
-      setAppId((window as any).__app_id);
+    if (typeof window !== "undefined" && (window as { __app_id?: string }).__app_id) {
+      setAppId((window as { __app_id: string }).__app_id);
     }
   }, []);
 
