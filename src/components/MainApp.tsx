@@ -210,7 +210,7 @@ export default function MainApp() {
           handleMouseLeave={handleMouseLeave}
           handleClearGrid={clearGrid}
           handleExportTexture={handleExportTexture}
-          canvasRef={canvasRef}
+          canvasRef={canvasRef as React.RefObject<HTMLCanvasElement>}
           undo={undo}
           redo={redo}
           canUndo={canUndo}
