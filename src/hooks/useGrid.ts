@@ -242,7 +242,7 @@ export function useGrid(initialSize = 16) {
   ) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!ctx) return;
+    if (!canvas || !ctx) return;
 
     const pixelSize = canvas.width / gridSize;
     ctx.fillStyle = color;
