@@ -4,17 +4,21 @@ import React from "react";
 interface ColorPaletteProps {
   palette: string[];
   selectedColor: string;
+  secondaryColor: string;
   setSelectedColor: (color: string) => void;
+  setSecondaryColor: (color: string) => void;
   handleFillGrid: () => void;
 }
 
 const ColorPalette: React.FC<ColorPaletteProps> = ({
   palette,
   selectedColor,
+  secondaryColor,
   setSelectedColor,
+  setSecondaryColor,
   handleFillGrid,
 }) => (
-  <div className='w-full lg:w-1/3 p-4 bg-[#013503] rounded-xl shadow-lg flex flex-col'>
+  <div className='w-full p-4 bg-[#013503] rounded-xl shadow-lg flex flex-col'>
     <h2 className='text-2xl font-semibold mb-4 text-orange-300'>
       Color Palette
     </h2>
@@ -22,27 +26,42 @@ const ColorPalette: React.FC<ColorPaletteProps> = ({
       {palette.map((color, index) => (
         <div
           key={index}
-          className={`w-6 h-6 rounded-sm cursor-pointer border-2 transition-all duration-100 ${
-            selectedColor === color
+          className={`w-6 h-6 rounded-sm cursor-pointer border-2 transition-all duration-100 ${selectedColor === color
               ? "border-blue-400 scale-110"
               : "border-transparent"
           }`}
           style={{ backgroundColor: color }}
           onClick={() => setSelectedColor(color)}
-          title={color}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setSecondaryColor(color);
+          }}
+          title={`Left-click: ${color}\nRight-click: set secondary`}
         ></div>
       ))}
     </div>
     <div className='flex items-center justify-between mt-auto p-2 bg-gray-700 rounded-lg'>
-      <div className='flex items-center'>
-        <span className='mr-2 text-gray-300'>Selected:</span>
-        <div
-          className='w-8 h-8 rounded-full border-2 border-gray-500 shadow-md'
-          style={{ backgroundColor: selectedColor }}
-        ></div>
-        <span className='ml-2 font-mono text-lg text-white'>
-          {selectedColor.toUpperCase()}
-        </span>
+      <div className='flex flex-col gap-2'>
+        <div className='flex items-center'>
+          <span className='mr-2 text-gray-300 text-sm'>Primary:</span>
+          <div
+            className='w-7 h-7 rounded-full border-2 border-gray-500 shadow-md'
+            style={{ backgroundColor: selectedColor }}
+          ></div>
+          <span className='ml-2 font-mono text-md text-white'>
+            {selectedColor.toUpperCase()}
+          </span>
+        </div>
+        <div className='flex items-center'>
+          <span className='mr-2 text-gray-300 text-sm'>Secondary:</span>
+          <div
+            className='w-7 h-7 rounded-full border-2 border-gray-500 shadow-md'
+            style={{ backgroundColor: secondaryColor }}
+          ></div>
+          <span className='ml-2 font-mono text-md text-white'>
+            {secondaryColor.toUpperCase()}
+          </span>
+        </div>
       </div>
       <button
         onClick={handleFillGrid}

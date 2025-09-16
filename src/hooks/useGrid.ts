@@ -1,77 +1,423 @@
 // src/hooks/useGrid.ts
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { generate256ColorPalette } from '../utils/palette';
 import { DEFAULT_GRID_COLOR } from '../utils/constants';
+import { Tool } from '../components/Toolbar';
+
+const hexToRgb = (hex: string): [number, number, number] | null => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+    : null;
+};
+
+const rgbToHex = (r: number, g: number, b: number): string => {
+  return "#" + [r, g, b].map(x => {
+    const hex = Math.round(x).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+};
+
+// Bresenham's line algorithm
+function getLinePixels(x0: number, y0: number, x1: number, y1: number): [number, number][] {
+  const pixels: [number, number][] = [];
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+
+  while (true) {
+    pixels.push([x0, y0]);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+  return pixels;
+}
+
+function applyGradient(
+  grid: string[][],
+  start: [number, number],
+  end: [number, number],
+  startColor: string,
+  endColor: string
+): string[][] {
+  const newGrid = grid.map(r => [...r]);
+  const startRgb = hexToRgb(startColor);
+  const endRgb = hexToRgb(endColor);
+
+  if (!startRgb || !endRgb) return newGrid; // Invalid color format
+
+  const [x0, y0] = start;
+  const [x1, y1] = end;
+
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) return newGrid; // Start and end points are the same
+
+  for (let r = 0; r < newGrid.length; r++) {
+    for (let c = 0; c < newGrid[r].length; c++) {
+      // Project pixel onto the gradient line to find interpolation factor t
+      const t = ((c - x0) * dx + (r - y0) * dy) / lenSq;
+      const clampedT = Math.max(0, Math.min(1, t)); // Clamp t between 0 and 1
+
+      const R = startRgb[0] + clampedT * (endRgb[0] - startRgb[0]);
+      const G = startRgb[1] + clampedT * (endRgb[1] - startRgb[1]);
+      const B = startRgb[2] + clampedT * (endRgb[2] - startRgb[2]);
+
+      newGrid[r][c] = rgbToHex(R, G, B);
+    }
+  }
+
+  return newGrid;
+}
+
+// Helper to draw the entire grid - for full updates
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  grid: string[][],
+  gridSize: number
+) {
+  const canvas = ctx.canvas;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const pixelSize = canvas.width / gridSize;
+
+  // Draw the pixel colors
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      ctx.fillStyle = grid[r][c];
+      ctx.fillRect(c * pixelSize, r * pixelSize, pixelSize, pixelSize);
+    }
+  }
+
+  // Draw the grid lines
+  ctx.strokeStyle = '#4a5568'; // gray-700
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= gridSize; i++) {
+    // Vertical lines
+    ctx.moveTo(i * pixelSize, 0);
+    ctx.lineTo(i * pixelSize, canvas.height);
+    // Horizontal lines
+    ctx.moveTo(0, i * pixelSize);
+    ctx.lineTo(canvas.width, i * pixelSize);
+  }
+  ctx.stroke();
+}
 
 export function useGrid(initialSize = 16) {
   const [gridSize, setGridSize] = useState(initialSize);
-  const [gridColors, setGridColors] = useState<string[][]>(
-    Array(initialSize).fill(null).map(() => Array(initialSize).fill(DEFAULT_GRID_COLOR))
+  const [gridColors, setGridColors] = useState<string[][]>(() =>
+    Array(initialSize)
+      .fill(null)
+      .map(() => Array(initialSize).fill(DEFAULT_GRID_COLOR))
   );
   const [selectedColor, setSelectedColor] = useState('#000000');
+  const [secondaryColor, setSecondaryColor] = useState('#FFFFFF');
+  const [activeTool, setActiveTool] = useState<Tool>('pixel');
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Tool-specific state
+  const [lineStart, setLineStart] = useState<[number, number] | null>(null);
+  const [gradientStart, setGradientStart] = useState<[number, number] | null>(null);
+  const previewGrid = useRef<string[][] | null>(null);
+
   const [palette] = useState<string[]>(generate256ColorPalette());
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const exportCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Color a single cell
-  const colorCell = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      setGridColors((prevGrid) => {
-        const newGrid = prevGrid.map((row, rIdx) =>
-          row.map((color, cIdx) =>
-            rIdx === rowIndex && cIdx === colIndex ? selectedColor : color
-          )
-        );
-        return newGrid;
-      });
-    },
-    [selectedColor]
-  );
+  // Undo/Redo state
+  const history = useRef<string[][][]>([]);
+  const redoStack = useRef<string[][][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const MAX_HISTORY_SIZE = 50;
 
-  // Mouse events for drawing
+  const pushToHistory = useCallback((grid: string[][]) => {
+    if (history.current.length >= MAX_HISTORY_SIZE) {
+      history.current.shift(); // Keep history size manageable
+    }
+    history.current.push(grid);
+    redoStack.current = []; // Clear redo stack on new action
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  // Effect to draw the grid whenever it's replaced entirely
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx) {
+      drawGrid(ctx, gridColors, gridSize);
+    }
+  }, [gridColors, gridSize]);
+
+  const undo = useCallback(() => {
+    if (history.current.length === 0) return;
+
+    const lastState = history.current.pop();
+    if (lastState) {
+      redoStack.current.push(gridColors);
+      setGridColors(lastState);
+      setCanRedo(true);
+    }
+    if (history.current.length === 0) {
+      setCanUndo(false);
+    }
+  }, [gridColors]);
+
+  const redo = useCallback(() => {
+    if (redoStack.current.length === 0) return;
+
+    const nextState = redoStack.current.pop();
+    if (nextState) {
+      history.current.push(gridColors);
+      setGridColors(nextState);
+      setCanUndo(true);
+    }
+    if (redoStack.current.length === 0) {
+      setCanRedo(false);
+    }
+  }, [gridColors]);
+
+  // Effect for Keyboard Shortcuts (Undo/Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd on Mac or Ctrl on Windows/Linux
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === 'z') {
+          e.preventDefault(); // Prevent native browser undo/redo
+          if (e.shiftKey) {
+            redo();
+          } else {
+            undo();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [undo, redo]);
+
+  const getCoordsFromEvent = (
+    e: React.MouseEvent<HTMLCanvasElement>
+  ): [number, number] | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    const pixelSize = canvas.width / gridSize;
+    const col = Math.floor(x / pixelSize);
+    const row = Math.floor(y / pixelSize);
+
+    if (row >= 0 && row < gridSize && col >= 0 && col < gridSize) {
+      return [row, col];
+    }
+    return null;
+  };
+
+  const updatePixelOnCanvas = (
+    row: number,
+    col: number,
+    color: string
+  ) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+
+    const pixelSize = canvas.width / gridSize;
+    ctx.fillStyle = color;
+    // Draw a full-sized pixel. The grid line will be temporarily covered during a drag.
+    ctx.fillRect(col * pixelSize, row * pixelSize, pixelSize, pixelSize);
+  };
+
   const handleMouseDown = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      setIsDrawing(true);
-      colorCell(rowIndex, colIndex);
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const coords = getCoordsFromEvent(e);
+      if (!coords) return;
+
+      switch (activeTool) {
+        case 'pixel': {
+          pushToHistory(gridColors);
+          setIsDrawing(true);
+          const [row, col] = coords;
+          setGridColors((prev) => {
+            const newGrid = prev.map((r) => [...r]);
+            if (newGrid[row][col] !== selectedColor) {
+              newGrid[row][col] = selectedColor;
+              updatePixelOnCanvas(row, col, selectedColor);
+            }
+            return newGrid;
+          });
+          break;
+        }
+        case 'bucket': {
+          pushToHistory(gridColors);
+          const [startRow, startCol] = coords;
+          const targetColor = gridColors[startRow][startCol];
+
+          if (targetColor === selectedColor) break; // No need to fill
+
+          const newGrid = gridColors.map((r) => [...r]);
+          const queue: [number, number][] = [[startRow, startCol]];
+          const visited = new Set<string>();
+          visited.add(`${startRow},${startCol}`);
+
+          while (queue.length > 0) {
+            const [row, col] = queue.shift()!;
+            newGrid[row][col] = selectedColor;
+
+            [
+              [row - 1, col], // Up
+              [row + 1, col], // Down
+              [row, col - 1], // Left
+              [row, col + 1], // Right
+            ].forEach(([nextRow, nextCol]) => {
+              const key = `${nextRow},${nextCol}`;
+              if (
+                nextRow >= 0 &&
+                nextRow < gridSize &&
+                nextCol >= 0 &&
+                nextCol < gridSize &&
+                newGrid[nextRow][nextCol] === targetColor &&
+                !visited.has(key)
+              ) {
+                visited.add(key);
+                queue.push([nextRow, nextCol]);
+              }
+            });
+          }
+          setGridColors(newGrid);
+          break;
+        }
+        case 'line': {
+          console.log('LINE TOOL: Mouse Down');
+          setIsDrawing(true);
+          const [row, col] = coords;
+          setLineStart([row, col]);
+          previewGrid.current = gridColors.map(r => [...r]);
+          break;
+        }
+        case 'gradient': {
+          console.log('GRADIENT TOOL: Mouse Down');
+          setIsDrawing(true);
+          const [row, col] = coords;
+          setGradientStart([row, col]);
+          previewGrid.current = gridColors.map(r => [...r]);
+          break;
+        }
+      }
     },
-    [colorCell]
+    [selectedColor, gridSize, gridColors, pushToHistory, activeTool]
   );
 
   const handleMouseEnter = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      if (isDrawing) {
-        colorCell(rowIndex, colIndex);
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isDrawing) return;
+
+      if (activeTool === 'pixel') {
+        const coords = getCoordsFromEvent(e);
+        if (!coords) return;
+
+        const [row, col] = coords;
+        setGridColors((prev) => {
+          if (prev[row][col] === selectedColor) return prev;
+
+          const newGrid = prev.map((r) => [...r]);
+          newGrid[row][col] = selectedColor;
+          updatePixelOnCanvas(row, col, selectedColor);
+          return newGrid;
+        });
+      } else if (activeTool === 'line' && lineStart && previewGrid.current) {
+        const coords = getCoordsFromEvent(e);
+        if (!coords) return;
+
+        const [endRow, endCol] = coords;
+        const [startRow, startCol] = lineStart;
+
+        const linePixels = getLinePixels(startRow, startCol, endRow, endCol);
+        const newGrid = previewGrid.current.map(r => [...r]);
+
+        linePixels.forEach(([r, c]) => {
+          if (r < gridSize && c < gridSize) {
+            newGrid[r][c] = selectedColor;
+          }
+        });
+        setGridColors(newGrid);
+      } else if (activeTool === 'gradient' && gradientStart && previewGrid.current) {
+        const coords = getCoordsFromEvent(e);
+        if (!coords) return;
+        const [endRow, endCol] = coords;
+        const newGrid = applyGradient(previewGrid.current, gradientStart, [endRow, endCol], selectedColor, secondaryColor);
+        setGridColors(newGrid);
       }
     },
-    [isDrawing, colorCell]
+    [isDrawing, selectedColor, secondaryColor, gridSize, activeTool, lineStart, gradientStart]
   );
 
   const handleMouseUp = useCallback(() => {
     if (isDrawing) {
       setIsDrawing(false);
+      if (activeTool === 'line' || activeTool === 'gradient') {
+        // For drag tools, save history on mouse up
+        pushToHistory(gridColors);
+        setLineStart(null);
+        setGradientStart(null);
+        previewGrid.current = null;
+      } else {
+        // For pixel tool, just ensure grid lines are redrawn
+        setGridColors(gridColors => [...gridColors]);
+      }
     }
-  }, [isDrawing]);
+  }, [isDrawing, activeTool, gridColors, pushToHistory]);
 
-  // Clear the grid
+  const handleMouseLeave = useCallback(() => {
+    setIsDrawing(false);
+  }, []);
+
   const clearGrid = useCallback(() => {
+    pushToHistory(gridColors);
     setGridColors(
       Array(gridSize)
         .fill(null)
         .map(() => Array(gridSize).fill(DEFAULT_GRID_COLOR))
     );
-  }, [gridSize]);
+  }, [gridSize, gridColors, pushToHistory]);
 
-  // Fill the grid with the selected color
   const fillGrid = useCallback(() => {
+    pushToHistory(gridColors);
     setGridColors(
       Array(gridSize)
         .fill(null)
         .map(() => Array(gridSize).fill(selectedColor))
     );
-  }, [gridSize, selectedColor]);
+  }, [gridSize, selectedColor, gridColors, pushToHistory]);
 
-  // Change grid size and reset grid
   const changeGridSize = useCallback((newSize: number) => {
+    history.current = [];
+    redoStack.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+
     setGridSize(newSize);
     setGridColors(
       Array(newSize)
@@ -87,12 +433,22 @@ export function useGrid(initialSize = 16) {
     setGridColors,
     selectedColor,
     setSelectedColor,
+    secondaryColor,
+    setSecondaryColor,
+    activeTool,
+    setActiveTool,
     palette,
     canvasRef,
+    exportCanvasRef,
     handleMouseDown,
     handleMouseEnter,
     handleMouseUp,
+    handleMouseLeave,
     clearGrid,
     fillGrid,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   };
 }
