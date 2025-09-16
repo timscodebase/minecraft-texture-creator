@@ -1,4 +1,5 @@
 import React from "react";
+import styles from './AuthSection.module.css';
 
 type AuthSectionProps = {
   user: null | { uid: string; displayName?: string | null };
@@ -15,7 +16,7 @@ export default function AuthSection({
     return (
       <button
         onClick={onSignIn}
-        className='px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition-all duration-200'
+        className={styles.signInButton}
       >
         Sign In with Google
       </button>
@@ -23,15 +24,15 @@ export default function AuthSection({
   }
   return (
     <div>
-      <p className='text-sm mb-4 text-gray-400'>
+      <p className={styles.userInfo}>
         User:{" "}
-        <span className='font-mono bg-[#013503] p-1 rounded'>
+        <span className={styles.userName}>
           {user.displayName || user.uid}
         </span>
       </p>
       <button
         onClick={onSignOut}
-        className='px-4 py-2 bg-red-600 text-white rounded font-bold mb-4'
+        className={styles.signOutButton}
       >
         Sign Out
       </button>

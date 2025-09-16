@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useGrid } from "../hooks/useGrid";
 import { useFirestoreSync } from "../hooks/useFirestoreSync";
+import styles from './MainApp.module.css';
 
 import AuthSection from "./AuthSection";
 import ColorPalette from "./ColorPalette";
@@ -12,6 +13,7 @@ import TextureGrid from "./TextureGrid";
 import ExportModal from "./ExportModal";
 import PaywallModal from "./PaywallModal";
 import Toolbar from "./Toolbar";
+import ThemeSwitcher from './ThemeSwitcher';
 
 export default function MainApp() {
   // Auth
@@ -33,11 +35,11 @@ export default function MainApp() {
     canvasRef,
     exportCanvasRef,
     handleMouseDown,
+    handleMouseMove,
     handleMouseEnter,
     handleMouseUp,
     handleMouseLeave,
     clearGrid,
-    fillGrid,
     undo,
     redo,
     canUndo,
@@ -51,16 +53,14 @@ export default function MainApp() {
   const [exportMessage, setExportMessage] = useState("");
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallMessage, setPaywallMessage] = useState("");
+  const [theme, setTheme] = useState('dark');
 
   // Set appId from window (client only)
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      const windowWithAppId = window as { __app_id?: string };
-      if (windowWithAppId.__app_id) {
-        setAppId(windowWithAppId.__app_id);
-      }
+      document.documentElement.setAttribute('data-theme', theme);
     }
-  }, []);
+  }, [theme]);
 
   // Firestore sync
   useFirestoreSync({
@@ -159,7 +159,7 @@ export default function MainApp() {
   // Hydration-safe loading
   if (!isAuthReady) {
     return (
-      <div className='flex items-center justify-center min-h-screen bg-[#170a01] text-white'>
+      <div className={styles.loadingWrapper}>
         <p>Loading application...</p>
       </div>
     );
@@ -168,8 +168,8 @@ export default function MainApp() {
   // If not signed in, show sign in button
   if (!user) {
     return (
-      <div className='flex flex-col items-center justify-center min-h-screen bg-[#170a01] text-white'>
-        <h1 className='text-4xl font-bold mb-6 text-lime-500'>
+      <div className={styles.signInWrapper}>
+        <h1 className={styles.title}>
           Minecraft Texture Creator
         </h1>
         <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
@@ -179,17 +179,20 @@ export default function MainApp() {
 
   // Main app UI
   return (
-    <div className='min-h-screen bg-[#170a01] text-gray-100 font-inter p-4 flex flex-col items-center justify-center'>
-      <h1 className='text-4xl font-bold mb-6 text-lime-500'>
+    <div className={styles.wrapper}>
+      <h1 className={styles.title}>
         Minecraft Texture Creator
       </h1>
-      <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
-      <p className='text-md mb-4 text-gray-300'>
+      <div className={styles.auth}>
+        <AuthSection user={user} onSignIn={signIn} onSignOut={signOut} />
+      </div>
+      <p className={styles.usageText}>
         Total Exports:{" "}
-        <span className='font-bold text-yellow-300'>{usageCount}</span>
+        <span className={styles.usageCount}>{usageCount}</span>
       </p>
-      <div className='flex flex-col lg:flex-row gap-8 w-full max-w-6xl'>
-        <div className="flex flex-col gap-8 w-full lg:w-1/3">
+      <div className={styles.mainContent}>
+        <div className={styles.sidebar}>
+          <ThemeSwitcher theme={theme} setTheme={setTheme} />
           <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} />
           <ColorPalette
             palette={palette}
@@ -197,7 +200,6 @@ export default function MainApp() {
             setSelectedColor={setSelectedColor}
             secondaryColor={secondaryColor}
             setSecondaryColor={setSecondaryColor}
-            handleFillGrid={fillGrid}
           />
         </div>
         <TextureGrid
@@ -205,6 +207,7 @@ export default function MainApp() {
           usageCount={usageCount}
           handleGridSizeChange={setGridSize}
           handleMouseDown={handleMouseDown}
+          handleMouseMove={handleMouseMove}
           handleMouseEnter={handleMouseEnter}
           handleMouseUp={handleMouseUp}
           handleMouseLeave={handleMouseLeave}

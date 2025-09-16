@@ -1,0 +1,33 @@
+:root {
+  color-scheme: dark light;
+
+  --primary-light: #fefefe;
+  --primary-dark: #1a1a1a;
+  --primary-minecraft: #3c3c3c;
+
+  --secondary-light: #f2f2f2;
+  --secondary-dark: #2a2a2a;
+  --secondary-minecraft: #a0a0a0;
+
+  --text-light: #0a0a0a;
+  --text-dark: #fefefe;
+  --text-minecraft: #ffffff;
+}
+
+[data-theme='light'] {
+  --primary: var(--primary-light);
+  --secondary: var(--secondary-light);
+  --text: var(--text-light);
+}
+
+[data-theme='dark'] {
+  --primary: var(--primary-dark);
+  --secondary: var(--secondary-dark);
+  --text: var(--text-dark);
+}
+
+[data-theme='minecraft'] {
+  --primary: var(--primary-minecraft);
+  --secondary: var(--secondary-minecraft);
+  --text: var(--text-minecraft);
+}

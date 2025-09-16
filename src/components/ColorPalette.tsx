@@ -1,5 +1,6 @@
 // src/components/ColorPalette.tsx
 import React from "react";
+import styles from './ColorPalette.module.css';
 
 interface ColorPaletteProps {
   palette: string[];
@@ -7,7 +8,6 @@ interface ColorPaletteProps {
   secondaryColor: string;
   setSelectedColor: (color: string) => void;
   setSecondaryColor: (color: string) => void;
-  handleFillGrid: () => void;
 }
 
 const ColorPalette: React.FC<ColorPaletteProps> = ({
@@ -16,60 +16,50 @@ const ColorPalette: React.FC<ColorPaletteProps> = ({
   secondaryColor,
   setSelectedColor,
   setSecondaryColor,
-  handleFillGrid,
 }) => (
-  <div className='w-full p-4 bg-[#013503] rounded-xl shadow-lg flex flex-col'>
-    <h2 className='text-2xl font-semibold mb-4 text-orange-300'>
+  <div className={styles.wrapper}>
+    <h2 className={styles.title}>
       Color Palette
     </h2>
-    <div className='flex flex-wrap gap-1 mb-4 max-h-96 overflow-y-auto pr-2 bg-[#55555585] p-2'>
+    <div className={styles.palette}>
       {palette.map((color, index) => (
         <div
           key={index}
-          className={`w-6 h-6 rounded-sm cursor-pointer border-2 transition-all duration-100 ${selectedColor === color
-              ? "border-blue-400 scale-110"
-              : "border-transparent"
-          }`}
+          className={`${styles.colorBox} ${selectedColor === color ? styles.colorBoxSelected : ''}`}
           style={{ backgroundColor: color }}
           onClick={() => setSelectedColor(color)}
           onContextMenu={(e) => {
             e.preventDefault();
             setSecondaryColor(color);
           }}
-          title={`Left-click: ${color}\nRight-click: set secondary`}
+          title={`Left-click: ${color}
+Right-click: set secondary`}
         ></div>
       ))}
     </div>
-    <div className='flex items-center justify-between mt-auto p-2 bg-gray-700 rounded-lg'>
-      <div className='flex flex-col gap-2'>
-        <div className='flex items-center'>
-          <span className='mr-2 text-gray-300 text-sm'>Primary:</span>
+    <div className={styles.controls}>
+      <div className={styles.colorInfo}>
+        <div className={styles.colorDisplay}>
+          <span className={styles.colorLabel}>Primary:</span>
           <div
-            className='w-7 h-7 rounded-full border-2 border-gray-500 shadow-md'
+            className={styles.colorPreview}
             style={{ backgroundColor: selectedColor }}
           ></div>
-          <span className='ml-2 font-mono text-md text-white'>
+          <span className={styles.colorValue}>
             {selectedColor.toUpperCase()}
           </span>
         </div>
-        <div className='flex items-center'>
-          <span className='mr-2 text-gray-300 text-sm'>Secondary:</span>
+        <div className={styles.colorDisplay}>
+          <span className={styles.colorLabel}>Secondary:</span>
           <div
-            className='w-7 h-7 rounded-full border-2 border-gray-500 shadow-md'
+            className={styles.colorPreview}
             style={{ backgroundColor: secondaryColor }}
           ></div>
-          <span className='ml-2 font-mono text-md text-white'>
+          <span className={styles.colorValue}>
             {secondaryColor.toUpperCase()}
           </span>
         </div>
       </div>
-      <button
-        onClick={handleFillGrid}
-        className='px-4 py-2 bg-yellow-600 text-white font-bold rounded-xl shadow-md hover:bg-yellow-700 transition-all duration-200 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-75 text-sm'
-        title='Fill the entire grid with the selected color'
-      >
-        Fill Grid
-      </button>
     </div>
   </div>
 );
